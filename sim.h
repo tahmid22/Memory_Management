@@ -3,6 +3,11 @@
 
 #include "pagetable.h"
 #define MAXLINE 256
+
+/*
+ * allocate SIMPAGESIZE = 16 bytes for physmem <- physical simulated memory
+ * This is done in sim.c
+ */
 #define SIMPAGESIZE 16  /* Simulated physical memory page frame size */
 
 extern unsigned memsize;

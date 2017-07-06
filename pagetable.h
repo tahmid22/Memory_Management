@@ -7,7 +7,7 @@
 
 #define TRACE_64
 
-#define PAGE_SHIFT      12     // number of bits 2^(PAGE_SHIFT) == PAGE_SIZE
+#define PAGE_SHIFT      12  	// number of bits 2^(PAGE_SHIFT) == PAGE_SIZE
 #define PAGE_SIZE       4096 // Size of pagetable pages
 #define PAGE_MASK       (~(PAGE_SIZE-1))
 #define PG_VALID        (0x1) // Valid bit in pgd or pte, set if in memory
@@ -44,6 +44,8 @@
 typedef unsigned long addr_t;
 
 // These defines allow us to take advantage of the compiler's typechecking
+
+
 
 // Page directory entry (top-level)
 typedef struct { 

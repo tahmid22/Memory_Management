@@ -10,7 +10,13 @@
 // Define global variables declared in sim.h
 unsigned memsize = 0;
 int debug = 0;
+
+
+/*
+ * char *physmem <- space for SIMULATED physical memory
+ */
 char *physmem = NULL;
+
 struct frame *coremap = NULL;
 char *tracefile = NULL;
 

@@ -3,8 +3,18 @@
 #include "sim.h"
 #include "pagetable.h"
 
+/*
+ * this is page directory
+ * each item in the array <- is a page directory entry (pde_t) <- holds a pointer to a second level page table
+ * use lower bit in the pointer <- to record whether the entry (pde_t) is valid or not
+ *
+ *
+ * second_level_page table <- array of page table entry (pte_t) <-  1. consists of frame number IF the page is in the (simulated) physical memory
+ *                                                                  2. Offset into the swapfile IF the page has been written out of swap
+ *
+ */
 // The top-level page table (also known as the 'page directory')
-pgdir_entry_t pgdir[PTRS_PER_PGDIR]; 
+pgdir_entry_t pgdir[PTRS_PER_PGDIR];
 
 // Counters for various events.
 // Your code must increment these when the related events occur.
@@ -39,6 +49,38 @@ int allocate_frame(pgtbl_entry_t *p) {
 		// All frames were in use, so victim frame must hold some page
 		// Write victim page to swap, if needed, and update pagetable
 		// IMPLEMENTATION NEEDED
+        //TODO
+
+
+        pgtbl_entry_t *victim_pageTable_Entry = coremap[frame].pte;
+
+        /*
+        case1: if victim_pageTable_entry is dirty
+            s) write to disk
+            b) evict from the physical frame
+            c) increment dirty count
+
+        case2: if it is not dirty
+         `  a)
+            a) evict from the physical frame
+            b) increment clean count
+        */
+
+        unsigned isDirty = frame & PG_DIRTY;
+        
+        //if dirty bit is 0 meaning the memmory is not modified it
+        if (isDirty == 0){
+            swap
+            evict_clean_count ++;
+        }
+
+        else if (isDirty == 1){
+
+        }
+
+
+
+
 
 
 	}
@@ -140,16 +182,17 @@ char *find_physpage(addr_t vaddr, char type) {
 
 
 	// Use vaddr to get index into 2nd-level page table and initialize 'p'
+    //TODO
 
 
 
 	// Check if p is valid or not, on swap or not, and handle appropriately
-
+    //TODO
 
 
 	// Make sure that p is marked valid and referenced. Also mark it
 	// dirty if the access type indicates that the page will be written to.
-
+    //TODO
 
 
 	// Call replacement algorithm's ref_fcn for this page
