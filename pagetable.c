@@ -52,7 +52,7 @@ int allocate_frame(pgtbl_entry_t *p) {
         //TODO
 
 
-        pgtbl_entry_t *victim_pageTable_Entry = coremap[frame].pte;
+        pgtbl_entry_t *victim_pte = coremap[frame].pte;
 
         /*
         case1: if victim_pageTable_entry is dirty
@@ -66,17 +66,26 @@ int allocate_frame(pgtbl_entry_t *p) {
             b) increment clean count
         */
 
-        unsigned isDirty = frame & PG_DIRTY;
+        unsigned is_dirty = victim_pte->frame & PG_DIRTY;
+
+
         
         //if dirty bit is 0 meaning the memmory is not modified it
-        if (isDirty == 0){
-            swap
-            evict_clean_count ++;
+        if (is_dirty == 0){
+            evict_clean_count++;
         }
 
-        else if (isDirty == 1){
+        else if (is_dirty == 1){
+        	victim_pte->swap_off = swap_pageout(victim_pte, victim_pte->swap_off);
+        	evict_dirty_count++;
+        	victim_pte->frame = victim_pte->frame & ~PG_DIRTY;
+        	victim_pte->frame = victim_pte->frame | PG_ONSWAP;
+
 
         }
+
+        victim_pte->frame = victim_pte->frame & ~PG_VALID;
+        victim_pte->frame = victim_pte->frame & ~PG_REF;
 
 
 
