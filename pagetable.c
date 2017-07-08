@@ -1,5 +1,5 @@
 #include <assert.h>
-#include <string.h> 
+#include <string.h>
 #include "sim.h"
 #include "pagetable.h"
 
@@ -27,7 +27,7 @@ int evict_dirty_count = 0;
 /*
  * Allocates a frame to be used for the virtual page represented by p.
  * If all frames are in use, calls the replacement algorithm's evict_fcn to
- * select a victim frame.  Writes victim to swap if needed, and updates 
+ * select a victim frame.  Writes victim to swap if needed, and updates
  * pagetable entry for victim to indicate that virtual page is no longer in
  * (simulated) physical memory.
  *
@@ -54,39 +54,40 @@ int allocate_frame(pgtbl_entry_t *p) {
 
         ////_______________________________________ START of IMPLEMENTATION ____________________________________________
         pgtbl_entry_t* victim_pte = (pgtbl_entry_t*) coremap[frame].pte;
+        unsigned int* victim_frame = (unsigned int*) &victim_pte->frame;
 
-        int isDirty = (int) (victim_pte->frame & PG_DIRTY);
-        int isValid = (int) (victim_pte->frame & PG_VALID);
-        int isOnSwap = (int) (victim_pte->frame & PG_ONSWAP);
+        unsigned int isDirty    = (unsigned int) ((*victim_frame) & PG_DIRTY);
+        unsigned int isValid    = (unsigned int) ((*victim_frame) & PG_VALID);
+        unsigned int inSwapFile = (unsigned int) ((*victim_frame) & PG_ONSWAP);
 
         ////Note: Not sure if we need to check the followings
-        /*
-        if (isOnSwap == 1){
+        if (inSwapFile){
             fprintf("Error: Frame is already in the swapfile!");
             exit(1);
         }
 
-        if (isValid == 0){
+        if (!isValid){
             fprintf("Error: Invalid frame!");
             exit(1);
         }
-        */
 
-        if (isDirty == 0){
+        if (!isDirty){
             evict_clean_count ++;
         }
 
-        else if (isDirty == 1) {
-            unsigned int frameToSwap = (unsigned int) (victim_pte->frame >> PAGE_SHIFT); //shift the frame so status bits are not there
+        else if (isDirty){
+            unsigned int frameToSwap = (unsigned int) ((*victim_frame) >> PAGE_SHIFT); //shift the frame so status bits are not there
             off_t offsetToSwap = (off_t) (victim_pte->swap_off);
+
             off_t updatedOffset = (off_t) swap_pageout(frameToSwap, offsetToSwap);
             victim_pte->swap_off = updatedOffset;
 
+            *victim_frame = (*victim_frame) & ~PG_DIRTY;
             evict_dirty_count++;
         }
 
-        victim_pte->frame = victim_pte->frame & ~PG_VALID;
-        victim_pte->frame = victim_pte->frame | PG_ONSWAP;
+        *victim_frame = (*victim_frame) & ~PG_VALID;
+        *victim_frame = (*victim_frame) | PG_ONSWAP;
 	}
 
     ////_____________________________________________ END of IMPLEMENTATION ____________________________________________
@@ -101,7 +102,7 @@ int allocate_frame(pgtbl_entry_t *p) {
 /*
  * Initializes the top-level pagetable.
  * This function is called once at the start of the simulation.
- * For the simulation, there is a single "process" whose reference trace is 
+ * For the simulation, there is a single "process" whose reference trace is
  * being simulated, so there is just one top-level page table (page directory).
  * To keep things simple, we use a global array of 'page directory entries'.
  *
@@ -125,7 +126,7 @@ pgdir_entry_t init_second_level() {
 
 	// Allocating aligned memory ensures the low bits in the pointer must
 	// be zero, so we can use them to store our status bits, like PG_VALID
-	if (posix_memalign((void **)&pgtbl, PAGE_SIZE, 
+	if (posix_memalign((void **)&pgtbl, PAGE_SIZE,
 			   PTRS_PER_PGTBL*sizeof(pgtbl_entry_t)) != 0) {
 		perror("Failed to allocate aligned memory for page table");
 		exit(1);
@@ -143,13 +144,13 @@ pgdir_entry_t init_second_level() {
 	return new_entry;
 }
 
-/* 
- * Initializes the content of a (simulated) physical memory frame when it 
+/*
+ * Initializes the content of a (simulated) physical memory frame when it
  * is first allocated for some virtual address.  Just like in a real OS,
  * we fill the frame with zero's to prevent leaking information across
- * pages. 
- * 
- * In our simulation, we also store the the virtual address itself in the 
+ * pages.
+ *
+ * In our simulation, we also store the the virtual address itself in the
  * page frame to help with error checking.
  *
  */
@@ -158,7 +159,7 @@ void init_frame(int frame, addr_t vaddr) {
 	char *mem_ptr = &physmem[frame*SIMPAGESIZE];
 	// Calculate pointer to location in page where we keep the vaddr
         addr_t *vaddr_ptr = (addr_t *)(mem_ptr + sizeof(int));
-	
+
 	memset(mem_ptr, 0, SIMPAGESIZE); // zero-fill the frame
 	*vaddr_ptr = vaddr;             // record the vaddr for error checking
 
@@ -168,9 +169,9 @@ void init_frame(int frame, addr_t vaddr) {
 /*
  * Locate the physical frame number for the given vaddr using the page table.
  *
- * If the entry is invalid and not on swap, then this is the first reference 
- * to the page and a (simulated) physical frame should be allocated and 
- * initialized (using init_frame).  
+ * If the entry is invalid and not on swap, then this is the first reference
+ * to the page and a (simulated) physical frame should be allocated and
+ * initialized (using init_frame).
  *
  * If the entry is invalid and on swap, then a (simulated) physical frame
  * should be allocated and filled by reading the page data from swap.
@@ -193,13 +194,14 @@ char *find_physpage(addr_t vaddr, char type) {
 
     ////****************************************************************************************************************
 	// Use top-level page directory to get pointer to 2nd-level page table
+    //TODO
 	(void)idx; // To keep compiler happy - remove when you have a real use.
 
     pgtbl_entry_t* secLev_pgtable = (pgtbl_entry_t*) pgdir[idx].pde;
-    if (secLev_pgtable & PG_VALID == 0){
+    if (!(secLev_pgtable & PG_VALID)){
         pgdir[idx] = init_second_level();
     }
-    secLev_pgtable = (pgdir_entry_t*) (pgdir[idx] & PAGE_MASK);
+    secLev_pgtable = (pgdir_entry_t*) (pgdir[idx].pde & PAGE_MASK);
 
 
 
@@ -214,18 +216,18 @@ char *find_physpage(addr_t vaddr, char type) {
     ////****************************************************************************************************************
 	// Check if p is valid or not, on swap or not, and handle appropriately
     //TODO
-    unsigned int* pFrame = &p->frame;
-    off_t pOffset = p->swap_off;
+    unsigned int* pFrame = (unsigned int*) &p->frame;
+    off_t pOffset = (off_t) p->swap_off;
 
-    int isValid = (int)((*pFrame) & PG_VALID);
-    int inSwapFile = (int)((*pFrame) & PG_ONSWAP);
+    unsigned int isValid    = (unsigned int)((*pFrame) & PG_VALID);
+    unsigned int inSwapFile = (unsigned int)((*pFrame) & PG_ONSWAP);
 
-    if (isValid == 1){
+    if (isValid){
         hit_count++;
     }
 
-    else if (isValid == 0){
-        if (inSwapFile == 1){
+    else if (!isValid){
+        if (inSwapFile){
             int status = swap_pagein(*pframe, pOffset);
             if (status != 0){
                 exit(1);
@@ -237,7 +239,7 @@ char *find_physpage(addr_t vaddr, char type) {
             *pFrame = (*pFrame) & ~PG_ONSWAP;
         }
 
-        else if (inSwapFile == 0){
+        else if (!inSwapFile){
             int allocatedFrame = allocatedFrame(p);
             init_frame(allocatedFrame, vaddr);
             *pFrame = *pFrame | PG_DIRTY;
@@ -273,7 +275,7 @@ void print_pagetbl(pgtbl_entry_t *pgtbl) {
 	first_invalid = last_invalid = -1;
 
 	for (i=0; i < PTRS_PER_PGTBL; i++) {
-		if (!(pgtbl[i].frame & PG_VALID) && 
+		if (!(pgtbl[i].frame & PG_VALID) &&
 		    !(pgtbl[i].frame & PG_ONSWAP)) {
 			if (first_invalid == -1) {
 				first_invalid = i;
@@ -295,7 +297,7 @@ void print_pagetbl(pgtbl_entry_t *pgtbl) {
 			} else {
 				assert(pgtbl[i].frame & PG_ONSWAP);
 				printf("ONSWAP, at offset %lu\n",pgtbl[i].swap_off);
-			}			
+			}
 		}
 	}
 	if (first_invalid != -1) {
@@ -319,7 +321,7 @@ void print_pagedirectory() {
 			last_invalid = i;
 		} else {
 			if (first_invalid != -1) {
-				printf("[%d]: INVALID\n  to\n[%d]: INVALID\n", 
+				printf("[%d]: INVALID\n  to\n[%d]: INVALID\n",
 				       first_invalid, last_invalid);
 				first_invalid = last_invalid = -1;
 			}
