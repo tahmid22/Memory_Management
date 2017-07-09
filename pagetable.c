@@ -1,5 +1,7 @@
 #include <assert.h>
 #include <string.h>
+#include <errno.h>
+#include <stdio.h>
 #include "sim.h"
 #include "pagetable.h"
 
@@ -18,11 +20,13 @@ pgdir_entry_t pgdir[PTRS_PER_PGDIR];
 
 // Counters for various events.
 // Your code must increment these when the related events occur.
+
 int hit_count = 0;
 int miss_count = 0;
 int ref_count = 0;
 int evict_clean_count = 0;
 int evict_dirty_count = 0;
+
 
 /*
  * Allocates a frame to be used for the virtual page represented by p.
@@ -34,6 +38,9 @@ int evict_dirty_count = 0;
  * Counters for evictions should be updated appropriately in this function.
  */
 int allocate_frame(pgtbl_entry_t *p) {
+    printf("printing");
+
+
 	int i;
 	int frame = -1;
 	for(i = 0; i < memsize; i++) {
@@ -52,6 +59,8 @@ int allocate_frame(pgtbl_entry_t *p) {
 		// IMPLEMENTATION NEEDED
         //TODO
 
+        printf("printing");
+
         ////_______________________________________ START of IMPLEMENTATION ____________________________________________
         pgtbl_entry_t* victim_pte = (pgtbl_entry_t*) coremap[frame].pte;
         unsigned int* victim_frame = (unsigned int*) &victim_pte->frame;
@@ -62,12 +71,12 @@ int allocate_frame(pgtbl_entry_t *p) {
 
         ////Note: Not sure if we need to check the followings
         if (inSwapFile){
-            fprintf("Error: Frame is already in the swapfile!");
+            printf("Error: Frame is already in the swapfile!");
             exit(1);
         }
 
         if (!isValid){
-            fprintf("Error: Invalid frame!");
+            printf("Error: Invalid frame!");
             exit(1);
         }
 
@@ -185,10 +194,14 @@ void init_frame(int frame, addr_t vaddr) {
  *
  */
 char *find_physpage(addr_t vaddr, char type) {
+    printf("printing");
+
+
 	pgtbl_entry_t *p=NULL; // pointer to the full page table entry for vaddr
 	unsigned idx = PGDIR_INDEX(vaddr); // get index into page directory
 
 	// IMPLEMENTATION NEEDED
+    printf("printing");
 
     ////___________________________________________ START of IMPLEMENTATION ____________________________________________
 
@@ -197,11 +210,10 @@ char *find_physpage(addr_t vaddr, char type) {
     //TODO
 	(void)idx; // To keep compiler happy - remove when you have a real use.
 
-    pgtbl_entry_t* secLev_pgtable = (pgtbl_entry_t*) pgdir[idx].pde;
-    if (!(secLev_pgtable & PG_VALID)){
+    if (!(pgdir[idx].pde & PG_VALID)){
         pgdir[idx] = init_second_level();
     }
-    secLev_pgtable = (pgdir_entry_t*) (pgdir[idx].pde & PAGE_MASK);
+    pgtbl_entry_t* secLev_pgtable = (pgtbl_entry_t*) (pgdir[idx].pde & PAGE_MASK);
 
 
 
@@ -228,7 +240,7 @@ char *find_physpage(addr_t vaddr, char type) {
 
     else if (!isValid){
         if (inSwapFile){
-            int status = swap_pagein(*pframe, pOffset);
+            int status = swap_pagein(*pFrame, pOffset);
             if (status == -errno){
                 exit(1);
             }
@@ -240,7 +252,7 @@ char *find_physpage(addr_t vaddr, char type) {
         }
 
         else if (!inSwapFile){
-            int allocatedFrame = allocatedFrame(p);
+            int allocatedFrame = allocate_frame(p);
             init_frame(allocatedFrame, vaddr);
             *pFrame = *pFrame | PG_DIRTY;
         }

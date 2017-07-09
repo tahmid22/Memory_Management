@@ -26,7 +26,7 @@ int clock_evict() {
 
 	while(1){
 		current_frame = (unsigned int *) &(coremap[clock_pointer].pte->frame);
-		has_referenced = (unsigned int) (current_frame & PG_REF);
+		has_referenced = (unsigned int) (*current_frame & PG_REF);
 
 		if (!has_referenced) break;
 		else if (has_referenced) *current_frame = *current_frame & ~PG_REF;
