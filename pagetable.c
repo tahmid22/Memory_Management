@@ -5,16 +5,7 @@
 #include "sim.h"
 #include "pagetable.h"
 
-/*
- * this is page directory
- * each item in the array <- is a page directory entry (pde_t) <- holds a pointer to a second level page table
- * use lower bit in the pointer <- to record whether the entry (pde_t) is valid or not
- *
- *
- * second_level_page table <- array of page table entry (pte_t) <-  1. consists of frame number IF the page is in the (simulated) physical memory
- *                                                                  2. Offset into the swapfile IF the page has been written out of swap
- *
- */
+
 // The top-level page table (also known as the 'page directory')
 pgdir_entry_t pgdir[PTRS_PER_PGDIR];
 
@@ -38,9 +29,6 @@ int evict_dirty_count = 0;
  * Counters for evictions should be updated appropriately in this function.
  */
 int allocate_frame(pgtbl_entry_t *p) {
-    printf("printing");
-
-
 	int i;
 	int frame = -1;
 	for(i = 0; i < memsize; i++) {
@@ -59,24 +47,24 @@ int allocate_frame(pgtbl_entry_t *p) {
 		// IMPLEMENTATION NEEDED
         //TODO
 
-        printf("printing");
+        printf("printing from allocate_frame");
 
         ////_______________________________________ START of IMPLEMENTATION ____________________________________________
-        pgtbl_entry_t* victim_pte = (pgtbl_entry_t*) coremap[frame].pte;
-        unsigned int* victim_frame = (unsigned int*) &victim_pte->frame;
+        pgtbl_entry_t* victim_pte = (pgtbl_entry_t*) coremap[frame].pte;    // pte of evicted frame in the coremap
+        unsigned int* victim_frame = (unsigned int*) &victim_pte->frame;    // victim_frame pointer
 
-        unsigned int isDirty    = (unsigned int) ((*victim_frame) & PG_DIRTY);
-        unsigned int isValid    = (unsigned int) ((*victim_frame) & PG_VALID);
-        unsigned int inSwapFile = (unsigned int) ((*victim_frame) & PG_ONSWAP);
+        unsigned int isDirty    = (unsigned int) ((*victim_frame) & PG_DIRTY);  // Is the frame dirty (modified)?
+        unsigned int isValid    = (unsigned int) ((*victim_frame) & PG_VALID);  // Can frame be used?
+        unsigned int inSwapFile = (unsigned int) ((*victim_frame) & PG_ONSWAP); // Is the frame in the swapfile?
 
         ////Note: Not sure if we need to check the followings
         if (inSwapFile){
-            printf("Error: Frame is already in the swapfile!");
+            printf("Error: allocate_frame(): Frame is already in the swap-file!");
             exit(1);
         }
 
         if (!isValid){
-            printf("Error: Invalid frame!");
+            printf("Error: allocate_frame(): Invalid frame! Frame cannot be used.");
             exit(1);
         }
 
@@ -85,18 +73,19 @@ int allocate_frame(pgtbl_entry_t *p) {
         }
 
         else if (isDirty){
-            unsigned int frameToSwap = (unsigned int) ((*victim_frame) >> PAGE_SHIFT); //shift the frame so status bits are not there
-            off_t offsetToSwap = (off_t) (victim_pte->swap_off);
 
-            off_t updatedOffset = (off_t) swap_pageout(frameToSwap, offsetToSwap);
-            victim_pte->swap_off = updatedOffset;
+            unsigned int frameToSwap = (unsigned int) ((*victim_frame) >> PAGE_SHIFT);  //shift the frame to get rid of status bits
+            off_t offsetToSwap = (off_t) (victim_pte->swap_off);    // offset to swap into the swap-file with the frame
 
-            *victim_frame = (*victim_frame) & ~PG_DIRTY;
+            off_t updatedOffset = (off_t) swap_pageout(frameToSwap, offsetToSwap);  // swap_offset where the data was written on success
+            victim_pte->swap_off = updatedOffset;   // update victim_pte's offset after swapping out the frame
+
+            *victim_frame = (*victim_frame) & ~PG_DIRTY;    //frame has just been swapped into swap-file. It's no longer dirty.
             evict_dirty_count++;
         }
 
-        *victim_frame = (*victim_frame) & ~PG_VALID;
-        *victim_frame = (*victim_frame) | PG_ONSWAP;
+        *victim_frame = (*victim_frame) & ~PG_VALID;    // frame is in the swap-file, so its invalid invalid in secLevel pgtbl
+        *victim_frame = (*victim_frame) | PG_ONSWAP;    // frame is in the swap-file
 	}
 
     ////_____________________________________________ END of IMPLEMENTATION ____________________________________________
@@ -201,7 +190,7 @@ char *find_physpage(addr_t vaddr, char type) {
 	unsigned idx = PGDIR_INDEX(vaddr); // get index into page directory
 
 	// IMPLEMENTATION NEEDED
-    printf("printing");
+    printf("printing from find_physpage");
 
     ////___________________________________________ START of IMPLEMENTATION ____________________________________________
 
@@ -210,53 +199,67 @@ char *find_physpage(addr_t vaddr, char type) {
     //TODO
 	(void)idx; // To keep compiler happy - remove when you have a real use.
 
+    //initialize pde if it is the first time using that, meaning there is no second level pgtble associated with the pde
     if (!(pgdir[idx].pde & PG_VALID)){
         pgdir[idx] = init_second_level();
     }
-    pgtbl_entry_t* secLev_pgtable = (pgtbl_entry_t*) (pgdir[idx].pde & PAGE_MASK);
+    pgtbl_entry_t* secLev_pgtable = (pgtbl_entry_t*) (pgdir[idx].pde & PAGE_MASK);  //second level page table
 
 
 
     ////****************************************************************************************************************
 	// Use vaddr to get index into 2nd-level page table and initialize 'p'
     //TODO
-    unsigned idx_pte = PGTBL_INDEX(vaddr);
-    p = &(secLev_pgtable[idx_pte]);
+    unsigned idx_pte = PGTBL_INDEX(vaddr);  //index of the pte in the second level page table
+    p = &(secLev_pgtable[idx_pte]);         //pte in the second level page table
 
 
 
     ////****************************************************************************************************************
 	// Check if p is valid or not, on swap or not, and handle appropriately
     //TODO
-    unsigned int* pFrame = (unsigned int*) &p->frame;
-    off_t pOffset = (off_t) p->swap_off;
+    unsigned int* pFrame = (unsigned int*) &p->frame;   // frame ptr of the pte, p
+    off_t pOffset = (off_t) p->swap_off;                // offset from the frame
 
-    unsigned int isValid    = (unsigned int)((*pFrame) & PG_VALID);
-    unsigned int inSwapFile = (unsigned int)((*pFrame) & PG_ONSWAP);
+    unsigned int isValid    = (unsigned int)((*pFrame) & PG_VALID);     // whether pte, p is valid
+    unsigned int inSwapFile = (unsigned int)((*pFrame) & PG_ONSWAP);    // whether pte, p is in the swap file
 
+    // if pte, p is valid -> that means we have found the frmae and offset in the current second level pagetable.
+    // Its a hit.
     if (isValid){
         hit_count++;
     }
 
+    // Frame is invalid. It's not in the current secLevel pgtbl. We have to check in the swap file
+    // Its a miss.
     else if (!isValid){
+
+        //pte, p, is in the swap file
         if (inSwapFile){
-            int status = swap_pagein(*pFrame, pOffset);
+
+            // allocate a evicted frame where we want to swap the frame in from the swap file
+            int allocatedFrame = allocate_frame(p);
+
+            // bring frame from swapfile into the secLevel pgtbl. Also check for error.
+            int status = swap_pagein(allocatedFrame, pOffset);
             if (status == -errno){
                 exit(1);
             }
 
-            int allocatedFrame = allocate_frame(p);
-            *pFrame = allocatedFrame << PAGE_SHIFT;
-            *pFrame = (*pFrame) & ~PG_DIRTY;
-            *pFrame = (*pFrame) & ~PG_ONSWAP;
+            *pFrame = allocatedFrame << PAGE_SHIFT;     // make room for status bits
+            *pFrame = (*pFrame) & ~PG_DIRTY;            // just loaded from swap-file. Frame has not been modified yet.
+            *pFrame = (*pFrame) & ~PG_ONSWAP;           // frame no longer is in the swap-file.
         }
 
-        else if (!inSwapFile){
-            int allocatedFrame = allocate_frame(p);
-            init_frame(allocatedFrame, vaddr);
-            *pFrame = *pFrame | PG_DIRTY;
+        //frame is not in the swap-file either
+        else if (!inSwapFile) {
+            int allocatedFrame = allocate_frame(p); // allocate a evicted frame where we want to initialize the frame
+            init_frame(allocatedFrame, vaddr);      // First time use. Initialize the frame.
+
+            *pFrame = allocatedFrame << PAGE_SHIFT; // Make room for the status bits
+            *pFrame = *pFrame | PG_DIRTY;           // Frame just have been modified. Make it dirty.
         }
-        *pFrame = *pFrame | PG_VALID;
+
         miss_count++;
     }
 
@@ -265,11 +268,16 @@ char *find_physpage(addr_t vaddr, char type) {
 	// Make sure that p is marked valid and referenced. Also mark it
 	// dirty if the access type indicates that the page will be written to.
     //TODO
-    *pFrame = *pFrame | PG_REF;
 
-    if (type == 'S' || type == 'M'){
+    *pFrame = *pFrame | PG_VALID;       // make frame valid
+    *pFrame = *pFrame | PG_REF;         // make frame referenced
+    ref_count++;                        // just referenced the frame. increment ref counter
+
+    if (type == 'S' || type == 'M'){    //make frame dirty as appropriate
         *pFrame = *pFrame | PG_DIRTY;
     }
+
+    ref_count++;
 
     ////_____________________________________________ END of IMPLEMENTATION ____________________________________________
 
