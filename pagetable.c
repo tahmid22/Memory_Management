@@ -229,7 +229,7 @@ char *find_physpage(addr_t vaddr, char type) {
     else if (!isValid){
         if (inSwapFile){
             int status = swap_pagein(*pframe, pOffset);
-            if (status != 0){
+            if (status == -errno){
                 exit(1);
             }
 
