@@ -54,24 +54,26 @@ int allocate_frame(pgtbl_entry_t *p) {
         unsigned int* victim_frame = (unsigned int*) &victim_pte->frame;    // victim_frame pointer
 		 
         unsigned int isDirty = (unsigned int) ((*victim_frame) & PG_DIRTY);  // Is the frame dirty (modified)?
-     	  unsigned int inSwapFile = (unsigned int) ((*victim_frame) & PG_ONSWAP);
-     	  printf("%u\n", inSwapFile);
+		unsigned int inSwapFile = (unsigned int) ((*victim_frame) & PG_ONSWAP);
+     	printf("%u\n", inSwapFile);
      	  
-        if (!isDirty){
-        		printf("isClean\n");
-            evict_clean_count++;
-            
-        }else if (isDirty){
-				printf("isDirty\n");
+		if (!isDirty){
+			printf("isClean\n");
+            evict_clean_count++;    
+        }
+		
+		else if (isDirty){
+			printf("isDirty\n");
             unsigned int frameToSwap = (unsigned int) ((*victim_frame) >> PAGE_SHIFT);  //shift the frame to get rid of status bits
             off_t offsetToSwap = (off_t) (victim_pte->swap_off);    // offset to swap into the swap-file with the frame
             off_t updatedOffset = (off_t) swap_pageout(frameToSwap, offsetToSwap);  // swap_offset where the data was written on success
             victim_pte->swap_off = updatedOffset;   // update victim_pte's offset after swapping out the frame
 
             *victim_frame = (*victim_frame) & ~PG_DIRTY;    //frame has just been swapped into swap-file. It's no longer dirty.
-				if(victim_pte->swap_off != INVALID_SWAP){				
-					*victim_frame = (*victim_frame) | PG_ONSWAP;    // frame is in the swap-file 
-			   }  
+			
+			if(victim_pte->swap_off != INVALID_SWAP){
+				*victim_frame = (*victim_frame) | PG_ONSWAP;    // frame is in the swap-file 
+			}  
             evict_dirty_count++;
         }
 
