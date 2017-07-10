@@ -69,7 +69,9 @@ int allocate_frame(pgtbl_entry_t *p) {
             victim_pte->swap_off = updatedOffset;   // update victim_pte's offset after swapping out the frame
 
             *victim_frame = (*victim_frame) & ~PG_DIRTY;    //frame has just been swapped into swap-file. It's no longer dirty.
-				*victim_frame = (*victim_frame) | PG_ONSWAP;    // frame is in the swap-file   
+				if(victim_pte->swap_off != INVALID_SWAP){				
+					*victim_frame = (*victim_frame) | PG_ONSWAP;    // frame is in the swap-file 
+			   }  
             evict_dirty_count++;
         }
 
