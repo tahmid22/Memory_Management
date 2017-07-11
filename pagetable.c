@@ -218,7 +218,8 @@ char *find_physpage(addr_t vaddr, char type) {
             printf("%d %d reading page\n", allocatedFrame, (int) p->swap_off);
             
             int status = swap_pagein(allocatedFrame, p->swap_off);
-            if (status == -errno){
+            printf("%d status\n", status);
+            if (status != 0){
             	perror("invalid read");
                exit(1);
             }
