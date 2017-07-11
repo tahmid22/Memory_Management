@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include "pagetable.h"
 
+#include <stdbool.h>
+#include <string.h>
 
 extern int memsize;
 
@@ -12,47 +14,53 @@ extern int debug;
 
 extern struct frame *coremap;
 
+// use a linked list to track the lru queue
+typedef struct llnode_t {
+  // frame number
+  int frame;
+  // pointer to next llnode
+  struct llnode_t* next;
+} llnode;
 
-typedef struct node_t{
-	int frame_idx;
-	struct ndoe_t* next;
-} node;
+// main lru queue, record the sequence of insertion
+// head - evict, tail - insert
+llnode* lru_head;
+llnode* lru_tail;
+// bitmap recording referenced frames
+bool* lru_refed;
 
-node* head;
-node* tail;
 
-unsigned int* list_ref_bit;
+/* Page to evict is chosen using the accurate LRU algorithm.
+ * Returns the page frame number (which is also the index in the coremap)
+ * for the page that is to be evicted.
+ */
 
 int lru_evict() {
-	int frame_idx;	//frame index to return
+  // ensure there is a frame to evict
+  assert(lru_head != NULL);
 
-	if (head == NULL){	//head is NULL, Nothing in the linked list
-		frame_idx = (int)(random() % memsize);	//randomly return a frame index
-		tail = NULL;
-	}
+  // recover frame number from lru_head of list
+  int frame = lru_head->frame;
 
-	frame_idx = head->frame_idx;	//potential frame index, need to check if its referenced or not
+  // if only one element in the list
+  if (lru_head == lru_tail) {
+    lru_tail = NULL;
+  }
 
-	if (list_ref_bit[frame_idx] == 0){			//frame_index is not referenced
-		frame_idx = (int)(random() % memsize);	//randomly return a frame index
-	}
-	list_ref_bit[frame_idx] = 0;	//after evicting, its no longer referenced
+  // extra error checking
+  assert(lru_refed[frame] == 1);
+  
+  // mark frame as unreferenced
+  lru_refed[frame] = 0;
 
+  // update the lru_head of list
+  llnode* new_lru_head = lru_head->next;
+  free(lru_head);
+  lru_head = new_lru_head;
 
-	if (head == tail){	//there is only on frame in the linked list
-		free(head);
-		free(tail);
-		head = NULL;	//after evicting there is nothing in the linked list
-		tail = NULL;
-	}else{				//there are leftovers in the linked list
-		node* new_head = head ;
-		free(head);
-		head = new_head;
-		free(new_head);
-	}
-
-	return frame_idx;
+  return frame;
 }
+
 
 /* This function is called on each access to a page to update any information
  * needed by the lru algorithm.
@@ -60,53 +68,61 @@ int lru_evict() {
  */
 void lru_ref(pgtbl_entry_t *p) {
 
-	int physframe_idx = p->frame >> PAGE_SHIFT;
+  int frame = p->frame >> PAGE_SHIFT;
 
+  // if not recently referenced
+  if (lru_refed[frame] == 0) {
 
-	node* node_to_addToLList = (node*) malloc(sizeof(node));
-	node_to_addToLList->next = NULL;
+    // mark frame as referenced
+    lru_refed[frame] = 1;
 
-	unsigned int isReferenced = list_ref_bit[physframe_idx];
+    // create a new llnode to record the frame
+    llnode* new_node = (llnode*)malloc(sizeof(llnode));
+    new_node->frame = frame;
+    new_node->next = NULL;
 
-	if (isReferenced == 0){		//frame is not referenced
-		list_ref_bit[physframe_idx] = 1;
+    // update the lru_tail of list
+    if (lru_tail == NULL) { // list empty
+      lru_tail = new_node;
+      lru_head = lru_tail;
+    } else { // list not empty
+      lru_tail->next = new_node;
+      lru_tail = new_node;
+    }
 
-		node_to_addToLList->frame_idx = physframe_idx;
+  } else {
 
+    // create a new llnode to record the frame
+    llnode* new_node = (llnode*)malloc(sizeof(llnode));
+    new_node->frame = frame;
+    new_node->next = NULL;
+    
+    // append new_node to lru_tail of list
+    lru_tail->next = new_node;
+    lru_tail = new_node;
+    
+    // remove the last reference from list
+    llnode* p = lru_head;
+    llnode* prev = NULL;
+    while (p->frame != frame) {
+      prev = p;
+      p = p->next;
+    }
 
-		if (head == NULL){
-			head = node_to_addToLList;
-			tail = node_to_addToLList;
-		} else{
-			tail->next = node_to_addToLList;
-			tail = node_to_addToLList;
-		}
-	} else{						//frame is referenced
-		node_to_addToLList->frame_idx = physframe_idx;
+    if (prev != NULL) {
+      prev->next = p->next;
+      free(p);
+    } else { // about to delete lru_head
+      lru_head = p->next;
+      free(p);
+      if (lru_head == NULL) { // list become empty
+        lru_tail = NULL;
+      }
+    }
 
-		node* newhead = head;
-		node* lastRefed_frame = NULL;
+  }
 
-		while (newhead->frame_idx != physframe_idx){
-			lastRefed_frame = newhead;
-			newhead = newhead->next;
-		}
-
-		if (newhead != NULL){
-			lastRefed_frame->next = newhead->next;
-			free(newhead);
-			free(lastRefed_frame);
-		} else{
-			head = newhead->next;
-			if (head == NULL){
-				tail = NULL;
-			}
-			free(newhead);
-			free(lastRefed_frame);
-		}
-	}
-
-	return;
+  return;
 }
 
 
@@ -114,13 +130,8 @@ void lru_ref(pgtbl_entry_t *p) {
  * replacement algorithm 
  */
 void lru_init() {
-	head = NULL;
-	tail = NULL;
-	list_ref_bit = malloc(sizeof(unsigned int)*memsize);
-//	memset(list_ref_bit, 0, sizeof(unsigned int)*memsize);
-	int i;
-	for (i = 0; i< sizeof(unsigned int)*memsize; i+= sizeof(unsigned int)){
-		*(list_ref_bit + i) = 0;
-	}
-
+  lru_head = NULL;
+  lru_tail = NULL;
+  lru_refed = malloc(sizeof(bool) * memsize);
+  memset(lru_refed, 0, sizeof(bool) * memsize);
 }
