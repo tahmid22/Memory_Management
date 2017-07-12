@@ -14,8 +14,9 @@ extern int debug;
 
 extern struct frame *coremap;
 
+//node struct that builds up the linked list
 typedef struct node_struct{
-  int frame_idx;
+  unsigned int frame;
   struct node_struct* next;
 } node;
 
@@ -23,69 +24,25 @@ typedef struct node_struct{
 node* head;
 node* tail;
 
-
-unsigned int* list_ref_bit; //to keep track of referenced frames
-
 int lru_evict() {
-  int frame_idx;  //frame index to return
-
-  if (head == NULL){  //head is NULL, Nothing in the linked list
-    frame_idx = (int)(random() % memsize);  //randomly return a frame index
-    tail = NULL;
-    return frame_idx;
-  }
-
-  frame_idx = (int)head->frame_idx;  //potential frame index, need to check if its referenced or not
-
-  if (list_ref_bit[frame_idx] == 0){        //frame_index is not referenced
-    frame_idx = (int)(random() % memsize);  //randomly return a frame index
-    return frame_idx;
-  }
-  
-  if (head == tail){  //there is only one frame in the linked list
-    free(head);
-    free(tail);
-    //after evicting there is nothing in the linked list
-    head = NULL;      
-    tail = NULL;
-  }else{            //there are more than one frames in the linked list
-    node* new_head = head ;
-    free(head);
-    head = new_head;
-    free(new_head);
-  }
-
-  list_ref_bit[frame_idx] = 0;  //after evicting, its no longer referenced
-
-  return frame_idx;
+	unsigned int frameToLook = head->frame;
+	int i;		//index of the frame in the coremap that is be evicted
+	
+	for (i=0; i<memsize; i++){
+		if (coremap[i].pte->frame == frameToLook){		//found the frame in the coremap
+		
+			node* tempHead = head;
+			head = head->next;
+			free(tempHead);
+			return i;
+		}
+	}
+	if (i== memsize-1){
+		perror("Error: Could not find frame in the coremap");
+	}
+	return (int)(random() % memsize);
 }
 
-
-// int lru_evict() {
-//   // ensure there is a frame to evict
-//   assert(head != NULL);
-
-//   // recover frame number from lru_head of list
-//   int frame = head->frame_idx;
-
-//   // if only one element in the list
-//   if (head == tail) {
-//     tail = NULL;
-//   }
-
-//   // extra error checking
-//   assert(list_ref_bit[frame] == 1);
-  
-//   // mark frame as unreferenced
-//   list_ref_bit[frame] = 0;
-
-//   // update the lru_head of list
-//   node* lru_head = lru_head->next;
-//   free(lru_head);
-//   lru_head = new_lru_head;
-
-//   return frame;
-// }
 
 
 /* This function is called on each access to a page to update any information
@@ -93,131 +50,83 @@ int lru_evict() {
  * Input: The page table entry for the page that is being accessed.
  */
 void lru_ref(pgtbl_entry_t *p) {
+	if (head == NULL){	//Liked list is empty
+		node* nodeToAdd = malloc(sizeof(node));
+		nodeToAdd->frame = p->frame;
+		nodeToAdd->next = NULL;
+		
+		head = nodeToAdd;
+		tail = nodeToAdd;
+	}	
+	
+	else if (head == tail){	//there is only 1 node in the linked list
+		if (head->frame != p->frame){
+			node* nodeToAdd = malloc(sizeof(node));
+			nodeToAdd->frame = p->frame;
+			nodeToAdd->next = NULL;
+			
+			tail->next = nodeToAdd;
+			tail = tail->next;
+		}
+	}
+	
+	else{		//there are 2 or more nodes in LL
+		node* current_node = head;
+    	node* prev_node = NULL;			//previous node to the current node
+    	int found = 0;					//whether we found the fraam or not
 
-  int physframe_idx = p->frame >> PAGE_SHIFT;
+		while(current_node != NULL){		//until curr is tail's next
 
-  node* node_to_addToLList = (node*) malloc(sizeof(node));  // initialize node pointer to be added
-  node_to_addToLList->frame_idx = physframe_idx;
-                          
-  
-  if (head == NULL){    //there is no frame in the LinkedList
-    tail = node_to_addToLList;      
-    head = tail;        //set head to tail, so next time we set tail's next, head's next will be updated    
-    tail->next = NULL;
-  } else{
-    tail->next = node_to_addToLList;
-    tail = node_to_addToLList;
-    tail->next = NULL;
-  }
+			if(current_node->frame == p->frame){	//we found frame at curr
+				if(current_node == head){			//cur is head. Make head tail and head head's next
+					node* temp = head;
+					head = head->next;
+					free(temp);
+					
+					
+					node* nodeToAdd = malloc(sizeof(node));
+					nodeToAdd->frame = p->frame;
+					nodeToAdd->next = NULL;
+					
+					tail->next = nodeToAdd;
+					tail = tail->next;
+					
+		
+						
+				}else if(current_node->next != NULL){	//current_node is not at the tail. Otherwise, we do nothing
+					prev_node->next = current_node->next;
+					free(current_node);
+					
+					node* nodeToAdd = malloc(sizeof(node));
+					nodeToAdd->frame = p->frame;
+					nodeToAdd->next = NULL;
+					
+					tail->next = nodeToAdd;
+					tail = tail->next;
+					
+				}
+				found = 1;		//we found the frame
+				break;
+				
+			}
+			
+			prev_node = current_node;
+      		current_node = current_node->next;
+      	
+    	}
 
-  unsigned int isReferenced = list_ref_bit[physframe_idx];
-  if (isReferenced == 0){   //frame is not recently referenced
-    list_ref_bit[physframe_idx] = 1;    //make it referenced
-  } else{                   //frame is recently referenced
-    // node* current_node = head;
-    // node* previousToCur_node = NULL;
+		//did not find the frame, add the frame at the tail
+    	if(found ==0){
+    		node* nodeToAdd = malloc(sizeof(node));
+			nodeToAdd->frame = p->frame;
+			nodeToAdd->next = NULL;
 
-    // while (current_node->frame_idx != physframe_idx){
-    //   previousToCur_node = current_node;
-    //   current_node = current_node->next;
-    // }
-
-    // if (previousToCur_node == NULL){    //frame_idx is at the head of the LinkedList
-    //   if ((head==tail) || (head->next == NULL)){      //there is only 1 item in the LinkedList
-    //     free(head);
-    //     free(tail);
-    //     head = NULL;
-    //     tail = NULL;
-    //   } else{                 //more than 1 itrm in the LinkedList
-    //     head = head->next;
-    //   }
-    // } else{
-    //   previousToCur_node->next = current_node->next;  //delete current node from the LinkedList
-    // }
-
-    node* p = head;
-    node* prev = NULL;
-    while (p->frame_idx != physframe_idx) {
-      prev = p;
-      p = p->next;
-    }
-
-    if (prev != NULL) {
-      prev->next = p->next;
-      free(p);
-    } else { // about to delete lru_head
-      head = p->next;
-      free(p);
-      if (head == NULL) { // list become empty
-        tail = NULL;
-      }
-    }
-
-
-  }
-
-  return;
+			tail->next = nodeToAdd;
+			tail = tail->next;
+		}
+	}
+  	return;
 }
-
-
-
-// void lru_ref(pgtbl_entry_t *p) {
-
-//   // int frame = p->frame >> PAGE_SHIFT;
-
-//   // if not recently referenced
-//   if (list_ref_bit[frame] == 0) {
-
-//     // mark frame as referenced
-//     list_ref_bit[frame] = 1;
-
-//     // create a new llnode to record the frame
-//     node* new_node = (llnode*)malloc(sizeof(llnode));
-//     new_node->frame_idx = frame;
-//     new_node->next = NULL;
-
-//     // update the lru_tail of list
-//     if (lru_tail == NULL) { // list empty
-//       tail = new_node;
-//       head = tail;
-//     } else { // list not empty
-//       tail->next = new_node;
-//       tail = new_node;
-//     }
-
-//   } else {
-
-//     // create a new llnode to record the frame
-//     node* new_node = (node*)malloc(sizeof(llnode));
-//     new_node->frame_idx = frame;
-//     new_node->next = NULL;
-    
-//     // append new_node to lru_tail of list
-//     tail->next = new_node;
-//     tail = new_node;
-    
-//     // remove the last reference from list
-//     node* p = lru_head;
-//     node* prev = NULL;
-//     while (p->frame_idx != frame) {
-//       prev = p;
-//       p = p->next;
-//     }
-
-//     if (prev != NULL) {
-//       prev->next = p->next;
-//       free(p);
-//     } else { // about to delete lru_head
-//       head = p->next;
-//       free(p);
-//       if (head == NULL) { // list become empty
-//         tail = NULL;
-//       }
-//     }
-
-//   }
-//   return;
-// }
 
 
 /* Initialize any data structures needed for this 
@@ -226,13 +135,4 @@ void lru_ref(pgtbl_entry_t *p) {
 void lru_init() {
   head = NULL;
   tail = NULL;
-  list_ref_bit = malloc(sizeof(unsigned int)*memsize);
-  memset(list_ref_bit, 0, sizeof(unsigned int)*memsize);
-
-  //initialize list_ref_bits with all frames initially not recently referenced
-  // int i;
-  // for (i = 0; i< sizeof(unsigned int)*memsize; i+= sizeof(unsigned int)){
-  //   *(list_ref_bit + i) = 0;
-  // }
-
 }

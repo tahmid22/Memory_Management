@@ -22,7 +22,7 @@ int fifo_evict() {
 	int return_frame = first_in;
 
 	first_in++;
-	if (first_in == memsize-1) first_in = 0;
+	if (first_in == memsize) first_in = 0;
 
 	return return_frame;
 }

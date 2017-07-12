@@ -14,6 +14,7 @@ extern struct frame *coremap;
 
 extern char *tracefile;
 
+//struct for virtual address node
 typedef struct v_node{
 	addr_t vaddr;
 	struct v_node *next;
@@ -30,43 +31,30 @@ struct v_node* tail;
  */
 int opt_evict() {
 	
-	int index = 0;
-	int frame;
-	int evict_frame = 0;
-	
-	int distance = 0;
-	int max_distance = 0;
-	
-	v_node* current = head;
-	
-	//while(current != NULL){
-	//		node* base = current;
-	//		curernt_frame = current->frame;
-			
-		//	while (base != NULL){
-	//			distance ++;
-		//		frame = current->frame;
-			
-			
-	//		}
-	//} 
-	 
-	
-	for (index = 0; index < memsize; index++){
-		frame = index; 
+	int i = 0;				//index into the coremap where frame(to be evicted) is located
+	int frame;				//frame used to compare
+	int evict_frame = 0;	//frame to be evicted
+	int distance = 0;		//distance used to compare
+	int max_distance = 0;	//max distance -> frame that has not been used in the longest time
+
+	//iterate through all the frames in coremap
+	for (i = 0; i < memsize; i++){
+		v_node* current = head;
+		frame = i; 
+		distance = 0;
 		while(current != NULL){
-			if(coremap[frame].vaddr == current->vaddr){
+			if(coremap[frame].vaddr == current->vaddr){		//found the next occurance
 				break;
 			}else{
 				distance++;
 				current = current->next;
 			}
 		}
-		if(distance > max_distance){
+
+		if(distance > max_distance){  	// frame that has not been used in the longest time so far
 			max_distance = distance;
-			evict_frame = index;
-		} 
-	
+			evict_frame = i;
+		}
 	}
 	
 	return evict_frame;
@@ -77,10 +65,11 @@ int opt_evict() {
  * Input: The page table entry for the page that is being accessed.
  */
 void opt_ref(pgtbl_entry_t *p) {
+	//remove the head of the linked list
 	v_node *temp = head;
 	head = head->next;
 	free(temp);
-	
+
 	return;
 }
 
@@ -107,26 +96,22 @@ void opt_init() {
 				printf("%c %lx\n", type, vaddr);
 			}
 			printf("%lx\n", vaddr);
-			//access_mem(type, vaddr);
-			//v_node = malloc(sizeof(v_node));
-			//v_node->vaddr = vaddr;
-			//v_node->next = NULL;
+
+			//node to add to the linked list
 			v_node* node = malloc(sizeof(v_node));
 			node->vaddr = vaddr;
 			node->next = NULL;
-			if(!head){
+
+			if(!head){	//list is empty
 				head = node;
 				tail = node;
-			}else{
+			}else{		//not empty, add after tail and update teil
 				tail->next = node;
 				tail = tail->next;
 			}
-			
 		} else {
 			continue;
 		}
-
 	}
-	
 }
 

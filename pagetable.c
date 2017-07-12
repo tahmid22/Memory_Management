@@ -51,23 +51,21 @@ int allocate_frame(pgtbl_entry_t *p) {
    
         pgtbl_entry_t* victim_pte = coremap[frame].pte;
 		   	  
-        if (!(victim_pte->frame & PG_DIRTY)){
+        if (!(victim_pte->frame & PG_DIRTY)){	//page is not dirty. Its a clean evict
             evict_clean_count++; 
-        }else if (victim_pte->frame & PG_DIRTY){   
+        }else if (victim_pte->frame & PG_DIRTY){	//page is dirty
+			//need to swap-out the page to swap-file because page has been modified
 			  	victim_pte->swap_off = swap_pageout(frame, victim_pte->swap_off);
 				if(victim_pte->swap_off == INVALID_SWAP){
-			  		perror("invalid swap");
+			  		perror("Error: pagetable.c: allocate_frame(): Invalid swap-out.");
 			  		exit(1);
-			  	}else{
-			  		printf("%d frame %d swap_off\n", frame, (int) victim_pte->swap_off);
 			  	}
-			  	victim_pte->frame = victim_pte->frame | PG_ONSWAP;
-			  	victim_pte->frame = victim_pte->frame & ~PG_DIRTY;  
-            evict_dirty_count++;
+			  	victim_pte->frame = victim_pte->frame | PG_ONSWAP;	//page is in the swap-file
+			  	victim_pte->frame = victim_pte->frame & ~PG_DIRTY;  //page is no longer dirty
+            evict_dirty_count++;	//its a dirty eviction
         }
 
-        victim_pte->frame = victim_pte->frame & ~PG_VALID;  
-            
+        victim_pte->frame = victim_pte->frame & ~PG_VALID;	//just swapped out, page is no longer valid
 	}
 
     ////_____________________________________________ END of IMPLEMENTATION ____________________________________________
@@ -190,7 +188,7 @@ char *find_physpage(addr_t vaddr, char type) {
 	// Use vaddr to get index into 2nd-level page table and initialize 'p'
     //TODO
     unsigned idx_pte = PGTBL_INDEX(vaddr);  //index of the pte in the second level page table
-    p = &(secLev_pgtable[idx_pte]);         //pte in the second level page table
+    p = &(secLev_pgtable[idx_pte]);         //the pte in the second level page table
 
 
 
@@ -198,7 +196,7 @@ char *find_physpage(addr_t vaddr, char type) {
 	// Check if p is valid or not, on swap or not, and handle appropriately
     //TODO
     
-    // if pte, p is valid -> that means we have found the frmae and offset in the current second level pagetable.
+    // if pte, p is valid -> that means we have found the frame and offset in the current second level page-table.
     // Its a hit.
     if (p->frame & PG_VALID){
         hit_count++;
@@ -215,31 +213,30 @@ char *find_physpage(addr_t vaddr, char type) {
             int allocatedFrame = allocate_frame(p);
            
             // bring frame from swapfile into the secLevel pgtbl. Also check for error.
-            printf("%d %d reading page\n", allocatedFrame, (int) p->swap_off);
-            
             int status = swap_pagein(allocatedFrame, p->swap_off);
             printf("%d status\n", status);
             if (status != 0){
             	perror("invalid read");
-               exit(1);
+               	exit(1);
             }
 		
-            p->frame = allocatedFrame << PAGE_SHIFT;     // make room for status bits
+            p->frame = allocatedFrame << PAGE_SHIFT;    // make room for status bits
             p->frame = p->frame & ~PG_DIRTY;
             p->frame = p->frame | PG_ONSWAP;
+            coremap[allocatedFrame].vaddr = vaddr;
         }
 
         //frame is not in the swap-file either
         else if (!(p->frame & PG_ONSWAP)) {
-        		int allocatedFrame = allocate_frame(p); // allocate a frame where we want to initialize the frame
+			int allocatedFrame = allocate_frame(p); // allocate a frame where we want to initialize the frame
             p->frame = allocatedFrame << PAGE_SHIFT;
             init_frame(allocatedFrame, vaddr);      // First time use. Initialize the frame.
             p->frame = p->frame | PG_DIRTY;
-            printf("%d framealloc %d page\n", allocatedFrame, p->frame >> PAGE_SHIFT);
+			coremap[allocatedFrame].vaddr = vaddr;
         }
-
         miss_count++;
     }
+    
     printf("%d hit %d miss\n", hit_count, miss_count);
 
 
